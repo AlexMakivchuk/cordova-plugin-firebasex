@@ -104,7 +104,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.Set;
 import java.util.List;
 
@@ -221,7 +221,7 @@ public class FirebasePlugin extends CordovaPlugin {
                         @Override
                         public JsonElement serialize(Double src, Type typeOfSrc, JsonSerializationContext context) {
                             String s = src.toString();
-                            if (s == "NaN") {
+                            if ("NaN".equals(s)) {
                                 return new JsonPrimitive("Double.NaN");
                             } else {
                                 return new JsonPrimitive(src);
@@ -697,20 +697,27 @@ public class FirebasePlugin extends CordovaPlugin {
         cordova.getThreadPool().execute(new Runnable() {
             public void run() {
                 try {
-                    if(Build.VERSION.SDK_INT >= 33){ // Android 13+
-                        boolean hasRuntimePermission = hasRuntimePermission(POST_NOTIFICATIONS);
-                        if(!hasRuntimePermission){
-                            String[] permissions = new String[]{qualifyPermission(POST_NOTIFICATIONS)};
-                            postNotificationPermissionRequestCallbackContext = callbackContext;
-                            requestPermissions(plugin, POST_NOTIFICATIONS_PERMISSION_REQUEST_ID, permissions);
-                            sendEmptyPluginResultAndKeepCallback(callbackContext);
-                        }
+                    if(Build.VERSION.SDK_INT < 33){
+                        callbackContext.success(1);
+                        return;
                     }
+
+                    // Android 13+
+                    boolean hasRuntimePermission = hasRuntimePermission(POST_NOTIFICATIONS);
+                    if(hasRuntimePermission){
+                        callbackContext.success(1);
+                        return;
+                    }
+
+                    String[] permissions = new String[]{qualifyPermission(POST_NOTIFICATIONS)};
+                    postNotificationPermissionRequestCallbackContext = callbackContext;
+                    requestPermissions(plugin, POST_NOTIFICATIONS_PERMISSION_REQUEST_ID, permissions);
+                    sendEmptyPluginResultAndKeepCallback(callbackContext);
 
                 } catch (Exception e) {
                     handleExceptionWithContext(e, callbackContext);
                 }
-                            }
+            }
         });
     }
 
@@ -1281,6 +1288,10 @@ public class FirebasePlugin extends CordovaPlugin {
 
     private void getIdTokenWithoutRefresh(final CallbackContext callbackContext, final JSONArray args) throws Exception {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            dispatchJsonError(callbackContext, "No user is currently signed in");
+            return;
+        }
 
         user.getIdToken(false).addOnSuccessListener(new OnSuccessListener<GetTokenResult>() {
            @Override
@@ -1299,6 +1310,10 @@ public class FirebasePlugin extends CordovaPlugin {
 
     private void getIdToken(final CallbackContext callbackContext, final JSONArray args) throws Exception {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            dispatchJsonError(callbackContext, "No user is currently signed in");
+            return;
+        }
 
         user.getIdToken(true).addOnSuccessListener(new OnSuccessListener<GetTokenResult>() {
            @Override
@@ -1317,6 +1332,10 @@ public class FirebasePlugin extends CordovaPlugin {
 
     private void extractAndReturnUserInfo(final CallbackContext callbackContext) throws Exception{
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            dispatchJsonError(callbackContext, "No user is currently signed in");
+            return;
+        }
         JSONObject returnResults = new JSONObject();
         returnResults.put("name", user.getDisplayName());
         returnResults.put("email", user.getEmail());
@@ -1603,7 +1622,12 @@ public class FirebasePlugin extends CordovaPlugin {
 
                     AuthCredential authCredential = FirebasePlugin.instance.obtainAuthCredential(jsonCredential);
                     if(authCredential != null){
-                        FirebaseAuth.getInstance().getCurrentUser().linkWithCredential(authCredential).addOnCompleteListener(cordova.getActivity(), new AuthResultOnCompleteListener(callbackContext));
+                        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+                        if (user == null) {
+                            dispatchJsonError(callbackContext, "No user is currently signed in");
+                            return;
+                        }
+                        user.linkWithCredential(authCredential).addOnCompleteListener(cordova.getActivity(), new AuthResultOnCompleteListener(callbackContext));
                         return;
                     }
 
@@ -1696,7 +1720,7 @@ public class FirebasePlugin extends CordovaPlugin {
                     int timeOutDuration = args.getInt(1);
                     String smsCode = args.getString(2);
 
-                    if(smsCode != null && smsCode != "null"){
+                    if(smsCode != null && !"null".equals(smsCode)){
                         FirebaseAuth.getInstance().getFirebaseAuthSettings().setAutoRetrievedSmsCodeForPhoneNumber(number, smsCode);
                     }
 
@@ -1752,6 +1776,10 @@ public class FirebasePlugin extends CordovaPlugin {
                     AuthCredential authCredential = EmailAuthProvider.getCredential(email, password);
                     if(authCredential != null){
                         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+                        if (user == null) {
+                            dispatchJsonError(callbackContext, "No user is currently signed in");
+                            return;
+                        }
                         user.linkWithCredential(authCredential).addOnCompleteListener(cordova.getActivity(), new AuthResultOnCompleteListener(callbackContext));
                         return;
                     }
@@ -1768,6 +1796,10 @@ public class FirebasePlugin extends CordovaPlugin {
                 try {
                     String providerId = args.getString(0);
                     FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+                    if (user == null) {
+                        dispatchJsonError(callbackContext, "No user is currently signed in");
+                        return;
+                    }
                     user.unlink(providerId).addOnCompleteListener(cordova.getActivity(), new AuthResultOnCompleteListener(callbackContext));
                 } catch (Exception e) {
                     handleExceptionWithContext(e, callbackContext);
@@ -2243,7 +2275,7 @@ public class FirebasePlugin extends CordovaPlugin {
                 Uri soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + packageName + "/raw/" + sound);
                 channel.setSound(soundUri, audioAttributes);
                 Log.d(TAG, "Channel "+id+" - sound="+sound);
-            } else if (sound != "false"){
+            } else if (!"false".equals(sound)){
                 channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes);
                 Log.d(TAG, "Channel "+id+" - sound=default");
             }else{
@@ -2833,7 +2865,7 @@ public class FirebasePlugin extends CordovaPlugin {
                     break;
                 case "orderBy":
                     Direction direction = Direction.ASCENDING;
-                    if (Objects.equals(filter.getString(2), new String("desc"))) {
+                    if ("desc".equals(filter.getString(2))) {
                         direction = Direction.DESCENDING;
                     }
                     query = query.orderBy(filter.getString(1), direction);
@@ -3189,8 +3221,13 @@ public class FirebasePlugin extends CordovaPlugin {
     }
 
     private String generateId(){
-        Random r = new Random();
-        return Integer.toString(r.nextInt(1000+1));
+        String id;
+        do {
+            id = Integer.toString(ThreadLocalRandom.current().nextInt(100000));
+        } while (this.firestoreListeners.containsKey(id)
+                || this.authCredentials.containsKey(id)
+                || this.authProviders.containsKey(id));
+        return id;
     }
 
     private boolean getMetaDataFromManifest(String name) throws Exception{
