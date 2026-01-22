@@ -31,6 +31,10 @@ static bool isFirebaseInitialized = false;
     Method original = class_getInstanceMethod(self, @selector(application:didFinishLaunchingWithOptions:));
     Method swizzled = class_getInstanceMethod(self, @selector(application:swizzledDidFinishLaunchingWithOptions:));
     method_exchangeImplementations(original, swizzled);
+
+    Method originalDidReceiveNotificationResponse = class_getInstanceMethod(self, @selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:));
+    Method swizzledDidReceiveNotificationResponse = class_getInstanceMethod(self, @selector(userNotificationCenter:swizzledDidReceiveNotificationResponse:withCompletionHandler:));
+    method_exchangeImplementations(originalDidReceiveNotificationResponse, swizzledDidReceiveNotificationResponse);
 }
 
 - (void)setApplicationInBackground:(NSNumber *)applicationInBackground {
@@ -167,7 +171,7 @@ static bool isFirebaseInitialized = false;
     }
 }
 
-- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
+- (void)application:(UIApplication *)application swizzledDidRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
     [FIRMessaging messaging].APNSToken = deviceToken;
     [FirebasePlugin.firebasePlugin _logMessage:[NSString stringWithFormat:@"didRegisterForRemoteNotificationsWithDeviceToken: %@", deviceToken]];
     [FirebasePlugin.firebasePlugin sendApnsToken:[FirebasePlugin.firebasePlugin hexadecimalStringFromData:deviceToken]];
@@ -415,13 +419,8 @@ static bool isFirebaseInitialized = false;
 
 // Asks the delegate to process the user's response to a delivered notification.
 // Called when user taps on system notification
-- (void) userNotificationCenter:(UNUserNotificationCenter *)center
- didReceiveNotificationResponse:(UNNotificationResponse *)response
-          withCompletionHandler:(void (^)(void))completionHandler
-{
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center swizzledDidReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler {
     @try{
-
-
         if (![response.notification.request.trigger isKindOfClass:UNPushNotificationTrigger.class] && ![response.notification.request.trigger isKindOfClass:UNTimeIntervalNotificationTrigger.class]){
             if (_previousDelegate) {
                 // bubbling event
@@ -460,9 +459,6 @@ static bool isFirebaseInitialized = false;
         [FirebasePlugin.firebasePlugin _logInfo:[NSString stringWithFormat:@"didReceiveNotificationResponse: %@", mutableUserInfo]];
 
         [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
-
-        completionHandler();
-
     }@catch (NSException *exception) {
         [FirebasePlugin.firebasePlugin handlePluginExceptionWithoutContext:exception];
     }
