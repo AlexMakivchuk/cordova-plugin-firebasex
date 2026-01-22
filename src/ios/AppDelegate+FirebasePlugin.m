@@ -31,10 +31,6 @@ static bool isFirebaseInitialized = false;
     Method original = class_getInstanceMethod(self, @selector(application:didFinishLaunchingWithOptions:));
     Method swizzled = class_getInstanceMethod(self, @selector(application:swizzledDidFinishLaunchingWithOptions:));
     method_exchangeImplementations(original, swizzled);
-
-    Method originalDidReceiveNotificationResponse = class_getInstanceMethod(self, @selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:));
-    Method swizzledDidReceiveNotificationResponse = class_getInstanceMethod(self, @selector(userNotificationCenter:swizzledDidReceiveNotificationResponse:withCompletionHandler:));
-    method_exchangeImplementations(originalDidReceiveNotificationResponse, swizzledDidReceiveNotificationResponse);
 }
 
 - (void)setApplicationInBackground:(NSNumber *)applicationInBackground {
@@ -346,80 +342,21 @@ static bool isFirebaseInitialized = false;
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
        willPresentNotification:(UNNotification *)notification
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler {
-
-    @try{
-
-        if (![notification.request.trigger isKindOfClass:UNPushNotificationTrigger.class] && ![notification.request.trigger isKindOfClass:UNTimeIntervalNotificationTrigger.class]){
-            if (_previousDelegate) {
-                // bubbling notification
-                [_previousDelegate userNotificationCenter:center
-                          willPresentNotification:notification
-                            withCompletionHandler:completionHandler];
-                return;
-            } else {
-                [FirebasePlugin.firebasePlugin _logError:@"willPresentNotification: aborting as not a supported UNNotificationTrigger"];
-                return;
-            }
-        }
-
-        [[FIRMessaging messaging] appDidReceiveMessage:notification.request.content.userInfo];
-
-        mutableUserInfo = [notification.request.content.userInfo mutableCopy];
-
-        NSString* messageType = [mutableUserInfo objectForKey:@"messageType"];
-        if(![messageType isEqualToString:@"data"]){
-            [mutableUserInfo setValue:@"notification" forKey:@"messageType"];
-        }
-
-        // Print full message.
-        [FirebasePlugin.firebasePlugin _logMessage:[NSString stringWithFormat:@"willPresentNotification: %@", mutableUserInfo]];
-
-
-        NSDictionary* aps = [mutableUserInfo objectForKey:@"aps"];
-        bool isContentAvailable = [[aps objectForKey:@"content-available"] isEqualToNumber:[NSNumber numberWithInt:1]];
-        if(isContentAvailable){
-            [FirebasePlugin.firebasePlugin _logError:@"willPresentNotification: aborting as content-available:1 so system notification will be shown"];
-            return;
-        }
-
-        bool showForegroundNotification = [mutableUserInfo objectForKey:@"notification_foreground"];
-        bool hasAlert = [aps objectForKey:@"alert"] != nil;
-        bool hasBadge = [aps objectForKey:@"badge"] != nil;
-        bool hasSound = [aps objectForKey:@"sound"] != nil;
-
-        if(showForegroundNotification){
-            [FirebasePlugin.firebasePlugin _logMessage:[NSString stringWithFormat:@"willPresentNotification: foreground notification alert=%@, badge=%@, sound=%@", hasAlert ? @"YES" : @"NO", hasBadge ? @"YES" : @"NO", hasSound ? @"YES" : @"NO"]];
-            if(hasAlert && hasBadge && hasSound){
-                completionHandler(UNNotificationPresentationOptionAlert + UNNotificationPresentationOptionBadge + UNNotificationPresentationOptionSound);
-            }else if(hasAlert && hasBadge){
-                completionHandler(UNNotificationPresentationOptionAlert + UNNotificationPresentationOptionBadge);
-            }else if(hasAlert && hasSound){
-                completionHandler(UNNotificationPresentationOptionAlert + UNNotificationPresentationOptionSound);
-            }else if(hasBadge && hasSound){
-                completionHandler(UNNotificationPresentationOptionBadge + UNNotificationPresentationOptionSound);
-            }else if(hasAlert){
-                completionHandler(UNNotificationPresentationOptionAlert);
-            }else if(hasBadge){
-                completionHandler(UNNotificationPresentationOptionBadge);
-            }else if(hasSound){
-                completionHandler(UNNotificationPresentationOptionSound);
-            }
-        }else{
-            [FirebasePlugin.firebasePlugin _logMessage:@"willPresentNotification: foreground notification not set"];
-        }
-
-        if(![messageType isEqualToString:@"data"]){
-            [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
-        }
-
-    }@catch (NSException *exception) {
-        [FirebasePlugin.firebasePlugin handlePluginExceptionWithoutContext:exception];
+    if (_previousDelegate) {
+        // bubbling notification
+        [_previousDelegate userNotificationCenter:center
+                  willPresentNotification:notification
+                    withCompletionHandler:completionHandler];
+        return;
+    } else {
+        [FirebasePlugin.firebasePlugin _logError:@"willPresentNotification: aborting as not a supported UNNotificationTrigger"];
+        return;
     }
 }
 
 // Asks the delegate to process the user's response to a delivered notification.
 // Called when user taps on system notification
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center swizzledDidReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler {
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler {
     @try{
         if (![response.notification.request.trigger isKindOfClass:UNPushNotificationTrigger.class] && ![response.notification.request.trigger isKindOfClass:UNTimeIntervalNotificationTrigger.class]){
             if (_previousDelegate) {
@@ -459,6 +396,9 @@ static bool isFirebaseInitialized = false;
         [FirebasePlugin.firebasePlugin _logInfo:[NSString stringWithFormat:@"didReceiveNotificationResponse: %@", mutableUserInfo]];
 
         [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
+        
+        completionHandler()
+        
     }@catch (NSException *exception) {
         [FirebasePlugin.firebasePlugin handlePluginExceptionWithoutContext:exception];
     }
