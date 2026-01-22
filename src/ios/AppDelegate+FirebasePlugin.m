@@ -46,20 +46,20 @@ static bool isFirebaseInitialized = false;
 
     @try{
         instance = self;
-        
+
         if(![FIRApp defaultApp]) {
             // get GoogleService-Info.plist file path
             NSString *filePath = [[NSBundle mainBundle] pathForResource:@"GoogleService-Info" ofType:@"plist"];
-            
+
             // if file is successfully found, use it
             if(filePath){
                 [FirebasePlugin.firebasePlugin _logMessage:@"GoogleService-Info.plist found, setup: [FIRApp configureWithOptions]"];
                 // create firebase configure options passing .plist as content
                 FIROptions *options = [[FIROptions alloc] initWithContentsOfFile:filePath];
-                
+
                 // configure FIRApp with options
                 [FIRApp configureWithOptions:options];
-                
+
                 isFirebaseInitialized = true;
             }else{
                 // no .plist found, try default App
@@ -71,28 +71,28 @@ static bool isFirebaseInitialized = false;
             // Assume that another call (probably from another plugin) did so with the plist
             isFirebaseInitialized = true;
         }
-        
+
         NSLog(@"****** ApplicationDidFinishLaunchingWithOptions: FIRApp configured.");
-        
-        
+
+
         // Set UNUserNotificationCenter delegate
         if ([UNUserNotificationCenter currentNotificationCenter].delegate != nil) {
             _previousDelegate = [UNUserNotificationCenter currentNotificationCenter].delegate;
         }
         [UNUserNotificationCenter currentNotificationCenter].delegate = self;
-        
+
         // Set FCM messaging delegate
         [FIRMessaging messaging].delegate = self;
-        
+
         // Setup Firestore
         [FirebasePlugin setFirestore:[FIRFirestore firestore]];
-        
+
         // Setup Storage
         [FirebasePlugin setStorage:[FIRStorage storage]];
-        
+
         // Setup Functions
         [FirebasePlugin setFunctions:[FIRFunctions functions]];
-        
+
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self setupAccessGroup];
         });
@@ -396,9 +396,9 @@ static bool isFirebaseInitialized = false;
         [FirebasePlugin.firebasePlugin _logInfo:[NSString stringWithFormat:@"didReceiveNotificationResponse: %@", mutableUserInfo]];
 
         [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
-        
-        completionHandler()
-        
+
+        completionHandler();
+
     }@catch (NSException *exception) {
         [FirebasePlugin.firebasePlugin handlePluginExceptionWithoutContext:exception];
     }
