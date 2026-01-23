@@ -358,47 +358,44 @@ static bool isFirebaseInitialized = false;
 // Called when user taps on system notification
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler {
     @try{
-        if (![response.notification.request.trigger isKindOfClass:UNPushNotificationTrigger.class] && ![response.notification.request.trigger isKindOfClass:UNTimeIntervalNotificationTrigger.class]){
-            if (_previousDelegate) {
-                // bubbling event
-                [_previousDelegate userNotificationCenter:center
-                               didReceiveNotificationResponse:response
-                            withCompletionHandler:completionHandler];
-                return;
-            } else {
-                [FirebasePlugin.firebasePlugin _logMessage:@"didReceiveNotificationResponse: aborting as not a supported UNNotificationTrigger"];
-                return;
+        if ([response.notification.request.trigger isKindOfClass:UNPushNotificationTrigger.class] ||
+            [response.notification.request.trigger isKindOfClass:UNTimeIntervalNotificationTrigger.class])
+        {
+
+            [[FIRMessaging messaging] appDidReceiveMessage:response.notification.request.content.userInfo];
+
+            mutableUserInfo = [response.notification.request.content.userInfo mutableCopy];
+
+            NSString* tap;
+            if([self.applicationInBackground isEqual:[NSNumber numberWithBool:YES]]){
+                tap = @"background";
+            }else{
+                tap = @"foreground";
+
             }
+            [mutableUserInfo setValue:tap forKey:@"tap"];
+            if([mutableUserInfo objectForKey:@"messageType"] == nil){
+                [mutableUserInfo setValue:@"notification" forKey:@"messageType"];
+            }
+
+            // Dynamic Actions
+            if (response.actionIdentifier && ![response.actionIdentifier isEqual:UNNotificationDefaultActionIdentifier]) {
+                [mutableUserInfo setValue:response.actionIdentifier forKey:@"action"];
+            }
+
+            // Print full message.
+            [FirebasePlugin.firebasePlugin _logInfo:[NSString stringWithFormat:@"didReceiveNotificationResponse: %@", mutableUserInfo]];
+
+            [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
         }
-
-        [[FIRMessaging messaging] appDidReceiveMessage:response.notification.request.content.userInfo];
-
-        mutableUserInfo = [response.notification.request.content.userInfo mutableCopy];
-
-        NSString* tap;
-        if([self.applicationInBackground isEqual:[NSNumber numberWithBool:YES]]){
-            tap = @"background";
-        }else{
-            tap = @"foreground";
-
+        if (_previousDelegate) {
+            // bubbling event
+            [_previousDelegate userNotificationCenter:center
+                           didReceiveNotificationResponse:response
+                        withCompletionHandler:completionHandler];
+            return;
         }
-        [mutableUserInfo setValue:tap forKey:@"tap"];
-        if([mutableUserInfo objectForKey:@"messageType"] == nil){
-            [mutableUserInfo setValue:@"notification" forKey:@"messageType"];
-        }
-
-        // Dynamic Actions
-        if (response.actionIdentifier && ![response.actionIdentifier isEqual:UNNotificationDefaultActionIdentifier]) {
-            [mutableUserInfo setValue:response.actionIdentifier forKey:@"action"];
-        }
-
-        // Print full message.
-        [FirebasePlugin.firebasePlugin _logInfo:[NSString stringWithFormat:@"didReceiveNotificationResponse: %@", mutableUserInfo]];
-
-        [FirebasePlugin.firebasePlugin sendNotification:mutableUserInfo];
-
         completionHandler();
-
     }@catch (NSException *exception) {
         [FirebasePlugin.firebasePlugin handlePluginExceptionWithoutContext:exception];
     }
